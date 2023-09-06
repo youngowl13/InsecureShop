@@ -1,0 +1,82 @@
+name: Bandit Scan
+
+on: [push, pull_request]  
+jobs:
+  Bandit:
+    name: Bandit Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.8
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install bandit
+          pip install tabulate
+
+      - name: Security check - Bandit
+        run: |
+          bandit -r . > bandit_report.txt || true
+
+      - name: Parse Bandit report
+        id: parse_output
+        run: |
+          import re
+          import textwrap
+          import json
+          import sys
+          import os
+          import datetime
+          from tabulate import tabulate
+
+          file_path = 'bandit_report.txt'
+          table_rows = []
+
+          with open(file_path, 'r') as file:
+              issue, severity, cwe, location = "", "", "", ""
+              collecting_info = False
+              for line in file:
+                  if 'Issue' in line:
+                      issue = textwrap.fill(line.split(': ')[1].strip(), width=40)
+                  elif 'Severity' in line:
+                      severity = line.split(': ')[1].strip().split(' ')[0]
+                  elif 'CWE' in line:
+                      cwe = textwrap.fill(line.split(': ')[1].strip(), width=70)
+                  elif 'Location' in line:
+                      location = textwrap.fill(line.split(': ')[1].strip(), width=30)
+                      collecting_info = True
+                  elif '---------------------------' in line:
+                      collecting_info = False
+                      table_rows.append([issue, severity, cwe, location])
+                      issue, severity, cwe, location = "", "", "", ""
+                  elif collecting_info:
+                      location += "\n" + textwrap.fill(line.strip(), width=50)
+
+          json_data = json.dumps(table_rows)
+          parsed_json = json.loads(json_data)
+
+          severity_order = {'High': 0, 'Medium': 1, 'Low': 2}
+          sorted_rows = sorted(parsed_json, key=lambda x: severity_order[x[1]])
+          table_headers = ["Issue", "Severity", "CWE", "Location"]
+
+          print(tabulate(sorted_rows, headers=table_headers, tablefmt='grid'))
+
+          high_severity_count = sum(1 for row in sorted_rows if row[1] == 'High')
+          print(f"::set-output name=high_severity_count::{high_severity_count}")
+
+        shell: python
+
+      - name: Check for High Severity Issues and Exit
+        run: |
+          high_severity_count=${{ steps.parse_output.outputs.high_severity_count }}
+          if [ "$high_severity_count" -gt 0 ]; then
+            echo "High severity issues found: $high_severity_count. Exiting workflow..."
+            exit 1
+          else:
+            echo "No high severity issues found. Continuing with the workflow."
+          fi
