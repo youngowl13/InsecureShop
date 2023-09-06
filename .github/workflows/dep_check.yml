@@ -30,11 +30,11 @@ jobs:
           unzip dependency-check.zip
           ls -la
           pwd
-          cd 
+
 
       - name: Copy Project Directory
         run: |
-          cp -r /home/runner/work/Damn-Vulnerable-Bank/Damn-Vulnerable-Bank /tmp/android
+          cp -r /home/runner/work/InsecureShop/InsecureShop /tmp/android
           rm -rf /tmp/android/dependency-check
           rm -f /tmp/android/dependency-check.zip
 
